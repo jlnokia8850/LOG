@@ -19,13 +19,13 @@ QQ:   243660565
 
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
-int log(char* fileName, int line, char* funcName, char *fmt, ...)
+int _log(char* fileName, int line, char* funcName, char *fmt, ...)
 {
 	FILE* fp = NULL;
 	time_t currTime;
 	struct tm currTm;
 	va_list ap;
-	const char* logFile = "D:\\log.txt"; //日志输出文件
+	const char* logFile = "log.txt"; //日志输出文件
 
 
 #if 1
@@ -47,7 +47,7 @@ int log(char* fileName, int line, char* funcName, char *fmt, ...)
 	localtime_r(&currTime, &currTm);
 #endif
 
-	fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s: ",
+	fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\n",
 		currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
 		fileName, line, funcName);
 
@@ -62,7 +62,7 @@ int log(char* fileName, int line, char* funcName, char *fmt, ...)
 
 
 //自定义log函数1  基础log函数输出 + syserrno:系统错误描述,userDescription:自定义描述
-int log1(char* fileName, int line, char* funcName, char* userDescription = "")
+int _log1(char* fileName, int line, char* funcName, char* userDescription = "")
 {
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
 	LPVOID lpMsgBuf;
@@ -74,12 +74,12 @@ int log1(char* fileName, int line, char* funcName, char* userDescription = "")
 	{
 		p[len - 1] = 0;   //去掉换行符
 	}	
-	log(fileName, line, funcName, "syserrno:%s", lpMsgBuf);
+	_log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", lpMsgBuf, userDescription);
 	LocalFree(lpMsgBuf);
 #else
 	char buf[1024];
 	char* p = strerror_r(errno, buf, sizeof(buf));//线程安全版本，buf不一定有值
-	log(fileName, line, funcName, "syserrno:%s, userDescription:", p, userDescription);
+	_log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", p, userDescription);
 #endif
 
 	return 0;
