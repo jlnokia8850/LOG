@@ -16,6 +16,7 @@ QQ:   243660565
 #endif
 
 #pragma warning(disable: 4996)
+#pragma warning(disable: 4267)
 
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
@@ -70,11 +71,11 @@ int _log1(char* fileName, int line, char* funcName, char* userDescription = "")
 		NULL, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, NULL);
 	char* p = (char*)lpMsgBuf;
 	int len = strlen(p);
-	if (len > 0)
+	if (len > 1)
 	{
-		p[len - 1] = 0;   //去掉换行符
+		p[len - 2] = 0;   //去掉换行符
 	}	
-	_log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", lpMsgBuf, userDescription);
+	_log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", (char*)lpMsgBuf, userDescription);
 	LocalFree(lpMsgBuf);
 #else
 	char buf[1024];
