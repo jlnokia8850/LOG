@@ -30,7 +30,7 @@ int _log(char* fileName, int line, char* funcName, char *fmt, ...)
 
 
 #if 1
-	fp = fopen(logFile, "a+");//输出位置
+	fp = fopen(logFile, "ab+");//输出位置
 	if (NULL == fp)
 	{
 		return -1;
@@ -69,12 +69,6 @@ int _log1(char* fileName, int line, char* funcName, char* userDescription = "")
 	LPVOID lpMsgBuf;
 	FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 		NULL, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, NULL);
-	char* p = (char*)lpMsgBuf;
-	int len = strlen(p);
-	if (len > 1)
-	{
-		p[len - 2] = 0;   //去掉换行符
-	}	
 	_log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", (char*)lpMsgBuf, userDescription);
 	LocalFree(lpMsgBuf);
 #else
