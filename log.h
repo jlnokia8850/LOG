@@ -1,7 +1,3 @@
-/*
-作者：李海涛
-QQ:   243660565
-*/
 #ifndef ___LOG___
 #define ___LOG___
 
@@ -10,9 +6,9 @@ QQ:   243660565
 
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
-int _log(char* fileName, int line, char* funcName, char *fmt, ...);
+int _log(const char* fileName, int line, const char* funcName, const char *fmt, ...);
 
 //自定义log函数1  基础log函数输出 + syserrno:系统错误描述,userDescription:自定义描述
-int _log1(char* fileName, int line, char* funcName, char* userDescription = "");
+int _log1(const char* fileName, int line, const char* funcName, const char* userDescription = "");
 
 #endif
