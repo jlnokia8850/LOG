@@ -1,6 +1,4 @@
-#ifndef ___LOG___
-#define ___LOG___
-
+#include "log.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdarg.h>
@@ -15,6 +13,15 @@
 #pragma warning(disable: 4267)
 
 
+static char logFile[266] = {0};
+
+
+void setLogFile(const char* file)
+{
+	strcpy(logFile, file);
+}
+
+
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
 int _log(const char* fileName, int line, const char* funcName, const char *fmt, ...)
 {
@@ -22,19 +29,19 @@ int _log(const char* fileName, int line, const char* funcName, const char *fmt, 
 	time_t currTime;
 	struct tm currTm;
 	va_list ap;
-	const char* logFile = "log"; //日志输出文件
 
-#if 1
-	fp = fopen(logFile, "ab+");//输出位置
-	if (NULL == fp)
+	if (0 == logFile[0])
 	{
-		return -1;
+		fp = stderr;
 	}
-#endif
-
-#if 0
-	fp = stderr;  //输出位置
-#endif
+	else
+	{
+		fp = fopen(logFile, "ab+");//输出位置
+		if (NULL == fp)
+		{
+			return -1;
+		}
+	}
 
 	time(&currTime);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
@@ -58,14 +65,18 @@ int _log(const char* fileName, int line, const char* funcName, const char *fmt, 
 #else
 	fprintf(fp, "\n");
 #endif
+
+	if (0 != logFile[0])
+	{
+		fclose(fp);
+	}
 	
-	fclose(fp);
 	return 0;
 }
 
 
 //自定义log函数1  基础log函数输出 + syserrno:系统错误描述,userDescription:自定义描述
-int _log1(const char* fileName, int line, const char* funcName, const char* userDescription = "")
+int _log1(const char* fileName, int line, const char* funcName, const char* userDescription)
 {
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
 	LPVOID lpMsgBuf;
@@ -81,4 +92,3 @@ int _log1(const char* fileName, int line, const char* funcName, const char* user
 
 	return 0;
 }
-#endif
