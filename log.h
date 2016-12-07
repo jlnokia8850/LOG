@@ -9,7 +9,10 @@
 extern "C" {
 #endif
 
-void setLogFile(const char* file);
+int SetLogDir(const char* dir);
+
+//清除超过指定天数的日志，SetLogDir之后调用
+int ClearLog(const unsigned int days);
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
 int _log(const char* fileName, int line, const char* funcName, const char *fmt, ...);
