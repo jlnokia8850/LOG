@@ -20,10 +20,16 @@
 #pragma warning(disable: 4267)
 
 static const int PATHLEN = 512;
-static char logDir[PATHLEN] = { 0 };
-static char logFile[PATHLEN] = { 0 };
+static char g_logDir[PATHLEN] = { 0 };
+static char g_logFile[PATHLEN] = { 0 };
+static char g_fileNameKey[PATHLEN] = { 0 };
 
-int SetLogDir(const char* dir)
+
+//fileNameKey日志文件名称的关键字，不允许有-减号字符， 否则清理日志功能会出错
+//windows各种预定义目录可以通过SHGetSpecialFolderPath获取
+///char path[MAX_PATH + 1] = { 0 };
+///SHGetSpecialFolderPathA(NULL, path, CSIDL_APPDATA, 0);
+int SetLogDir(const char* dir, const char* fileNameKey)
 {
     if (access(dir, 0) < 0)
     {
@@ -37,17 +43,18 @@ int SetLogDir(const char* dir)
         }
     }
 
-    strcpy(logDir, dir);
+    strcpy(g_logDir, dir);
+    strcpy(g_fileNameKey, fileNameKey);
     time_t currTime;
     struct tm currTm;
     time(&currTime);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     localtime_s(&currTm, &currTime);
-    sprintf(logFile, "%s\\%04d-%02d-%02d-%02d-%02d-%02d.log", dir,
+    sprintf(g_logFile, "%s\\%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec);
 #else
     localtime_r(&currTime, &currTm);
-    sprintf(logFile, "%s/%04d-%02d-%02d-%02d-%02d-%02d.log", dir,
+    sprintf(g_logFile, "%s/%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec);
 #endif
 
@@ -70,25 +77,41 @@ private:
 static bool IsDelLog(const char* date, const unsigned int days)
 {
     struct tm begin = { 0 };
-    sscanf(date, "%04d-%02d-%02d-%02d-%02d-%02d", &begin.tm_year, &begin.tm_mon, &begin.tm_mday,
+    int num = sscanf(date, "%04d-%02d-%02d-%02d-%02d-%02d", &begin.tm_year, &begin.tm_mon, &begin.tm_mday,
         &begin.tm_hour, &begin.tm_min, &begin.tm_sec);
+    if (6 != num)  return false;
     begin.tm_year -= 1900;
     begin.tm_mon -= 1;
     time_t beginSecond = mktime(&begin);
+    if (-1 == beginSecond)  return false;
     time_t endSecond = 0;
     time(&endSecond);
-    if ((endSecond - beginSecond) / 3600 / 24 > days) { return true; }
+    if ((endSecond - beginSecond) / 3600 / 24 >= days) { return true; }
     return false;
 }
 
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
 int CCustomTraverseDir::FileOperation(const TCHAR* file)
 {
-    const TCHAR* p =  _tcsrchr(file, L'\\');
+    const TCHAR* r =  _tcsrchr(file, L'\\');
+    if (NULL == r)  { return 0; }
+    const TCHAR* p = _tcschr(r, L'-');
     if (NULL == p)  { return 0; }
     const TCHAR* q = _tcschr(file, L'.');
     if (NULL == q)  { return 0; }
     if (p >= q) { return 0; }
+
+#if defined(_UNICODE) || defined(UNICODE)
+    TCHAR fileNameKey[PATHLEN] = { 0 };
+    MultiByteToWideChar(CP_ACP, 0, g_fileNameKey, -1, fileNameKey, PATHLEN);
+    if ((p - r - 1) != _tcslen(fileNameKey))  return 0;
+    if (wmemcmp(r + 1, fileNameKey, p - r - 1) != 0)  return 0;
+#else
+    if ((p - r - 1) != strlen(g_fileNameKey))  return 0;
+    if (memcmp(r + 1, g_fileNameKey, p - r - 1) != 0)  return 0;
+#endif
+
+
     TCHAR date[PATHLEN] = { 0 };
     int i = 0;
     p++;
@@ -98,9 +121,13 @@ int CCustomTraverseDir::FileOperation(const TCHAR* file)
     }
     date[i] = 0;
 
+#if defined(_UNICODE) || defined(UNICODE)
     char date1[PATHLEN] = { 0 };
     WideCharToMultiByte(CP_ACP, 0, date, -1, date1, PATHLEN, 0, 0);
     if (IsDelLog(date1, m_days))
+#else
+    if (IsDelLog(date, m_days))
+#endif
     {
         DeleteFile(file);
     }
@@ -109,11 +136,17 @@ int CCustomTraverseDir::FileOperation(const TCHAR* file)
 #else
 int CCustomTraverseDir::FileOperation(const char* file)
 {
-    const char* p =  strrchr(file, L'/');
+    const char* r =  strrchr(file, L'/');
+    if (NULL == r)  { return 0; }
+    const char* p = strchr(r, L'-');
     if (NULL == p)  { return 0; }
     const char* q = strchr(file, L'.');
     if (NULL == q)  { return 0; }
     if (p >= q) { return 0; }
+
+    if ((p - r - 1) != strlen(g_fileNameKey))  return 0;
+    if (memcmp(r + 1, g_fileNameKey, p - r - 1) != 0)  return 0;
+
     char date[PATHLEN] = { 0 };
     int i = 0;
     p++;
@@ -135,29 +168,33 @@ int ClearLog(const unsigned int days)
 {
     CCustomTraverseDir TraverseDir(days);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
+#if defined(_UNICODE) || defined(UNICODE)
     TCHAR logDir1[PATHLEN] = { 0 };
-    MultiByteToWideChar(CP_ACP, 0, logDir, -1, logDir1, PATHLEN);
+    MultiByteToWideChar(CP_ACP, 0, g_logDir, -1, logDir1, PATHLEN);
     return TraverseDir.TraverseDir(logDir1);
 #else
-    return TraverseDir.TraverseDir(logDir);
+    return TraverseDir.TraverseDir(g_logDir);
+#endif
+#else
+    return TraverseDir.TraverseDir(g_logDir);
 #endif
 }
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
-int _log(const char* fileName, int line, const char* funcName, const char *fmt, ...)
+int _log1(const char* fileName, int line, const char* funcName, const char *fmt, ...)
 {
     FILE* fp = NULL;
     time_t currTime;
     struct tm currTm;
     va_list ap;
 
-    if (0 == logFile[0])
+    if (0 == g_logFile[0])
     {
         fp = stderr;
     }
     else
     {
-        fp = fopen(logFile, "ab+");//输出位置
+        fp = fopen(g_logFile, "ab+");//输出位置
         if (NULL == fp)
         {
             return -1;
@@ -167,14 +204,20 @@ int _log(const char* fileName, int line, const char* funcName, const char *fmt, 
     time(&currTime);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     localtime_s(&currTm, &currTime);
-    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\n",
+    LPVOID lpMsgBuf;
+    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, NULL);
+    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS_ERRNO: %sUSER: ",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
-        fileName, line, funcName);
+        fileName, line, funcName, (char*)lpMsgBuf);
+    LocalFree(lpMsgBuf);
 #else
     localtime_r(&currTime, &currTm);
-    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\n",
+    char buf[1024];
+    char* p = strerror_r(errno, buf, sizeof(buf));//线程安全版本，buf不一定有值
+    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS_ERRNO: %s\nUSER: ",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
-        fileName, line, funcName);
+        fileName, line, funcName, p);
 #endif
 
     va_start(ap, fmt);
@@ -182,34 +225,15 @@ int _log(const char* fileName, int line, const char* funcName, const char *fmt, 
     va_end(ap);
 
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
-    fprintf(fp, "\r\n");
+    fprintf(fp, "\r\n\r\n");
 #else
-    fprintf(fp, "\n");
+    fprintf(fp, "\n\n");
 #endif
 
-    if (0 != logFile[0])
+    if (0 != g_logFile[0])
     {
         fclose(fp);
     }
     
-    return 0;
-}
-
-
-//自定义log函数1  基础log函数输出 + syserrno:系统错误描述,userDescription:自定义描述
-int _log1(const char* fileName, int line, const char* funcName, const char* userDescription)
-{
-#if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
-    LPVOID lpMsgBuf;
-    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, NULL);
-    _log(fileName, line, funcName, "syserrno:%suserDescription:%s\r\n", (char*)lpMsgBuf, userDescription);
-    LocalFree(lpMsgBuf);
-#else
-    char buf[1024];
-    char* p = strerror_r(errno, buf, sizeof(buf));//线程安全版本，buf不一定有值
-    _log(fileName, line, funcName, "syserrno:%s\nuserDescription:%s\n", p, userDescription);
-#endif
-
     return 0;
 }
