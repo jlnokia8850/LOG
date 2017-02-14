@@ -21,15 +21,15 @@
 
 static const int PATHLEN = 512;
 static char g_logDir[PATHLEN] = { 0 };
-static char g_logFile[PATHLEN] = { 0 };
 static char g_fileNameKey[PATHLEN] = { 0 };
+static FILE* g_log_file = stderr;
 
 
 //fileNameKey日志文件名称的关键字，不允许有-减号字符， 否则清理日志功能会出错
 //windows各种预定义目录可以通过SHGetSpecialFolderPath获取
 ///char path[MAX_PATH + 1] = { 0 };
 ///SHGetSpecialFolderPathA(NULL, path, CSIDL_APPDATA, 0);
-int SetLogDir(const char* dir, const char* fileNameKey)
+int open_log_file(const char* dir, const char* fileNameKey)
 {
     if (access(dir, 0) < 0)
     {
@@ -48,15 +48,37 @@ int SetLogDir(const char* dir, const char* fileNameKey)
     time_t currTime;
     struct tm currTm;
     time(&currTime);
+
+    char log_file_name[PATHLEN] = { 0 };
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     localtime_s(&currTm, &currTime);
-    sprintf(g_logFile, "%s\\%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
+    sprintf(log_file_name, "%s\\%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec);
 #else
     localtime_r(&currTime, &currTm);
-    sprintf(g_logFile, "%s/%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
+    sprintf(log_file_name, "%s/%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, fileNameKey,
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec);
 #endif
+
+    g_log_file = fopen(log_file_name, "ab+");//输出位置
+    if (NULL == g_log_file)
+    {
+        return -2;
+    }
+
+    return 0;
+}
+
+int close_log_file()
+{
+    if (stderr != g_log_file)
+    {
+        if (NULL != g_log_file)
+        {
+            fclose(g_log_file);
+            g_log_file = NULL;
+        }
+    }
 
     return 0;
 }
@@ -164,7 +186,7 @@ int CCustomTraverseDir::FileOperation(const char* file)
 }
 #endif
 
-int ClearLog(const unsigned int days)
+int clear_log(const unsigned int days)
 {
     CCustomTraverseDir TraverseDir(days);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
@@ -183,57 +205,44 @@ int ClearLog(const unsigned int days)
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
 int _log1(const char* fileName, int line, const char* funcName, const char *fmt, ...)
 {
-    FILE* fp = NULL;
+#if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
+    int i = GetLastError();
     time_t currTime;
     struct tm currTm;
-    va_list ap;
-
-    if (0 == g_logFile[0])
-    {
-        fp = stderr;
-    }
-    else
-    {
-        fp = fopen(g_logFile, "ab+");//输出位置
-        if (NULL == fp)
-        {
-            return -1;
-        }
-    }
-
     time(&currTime);
-#if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     localtime_s(&currTm, &currTime);
     LPVOID lpMsgBuf;
     FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, NULL);
-    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS_ERRNO: %sUSER: ",
+        NULL, i, 0, (LPSTR)&lpMsgBuf, 0, NULL);
+    fprintf(g_log_file, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS_ERRNO: %sUSER: ",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
         fileName, line, funcName, (char*)lpMsgBuf);
     LocalFree(lpMsgBuf);
+    ///SetLastError(0);
 #else
-    localtime_r(&currTime, &currTm);
     char buf[1024];
     char* p = strerror_r(errno, buf, sizeof(buf));//线程安全版本，buf不一定有值
-    fprintf(fp, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS_ERRNO: %s\nUSER: ",
+    time_t currTime;
+    struct tm currTm;
+    time(&currTime);
+    localtime_r(&currTime, &currTm);
+    fprintf(g_log_file, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS_ERRNO: %s\nUSER: ",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
         fileName, line, funcName, p);
 #endif
 
+    va_list ap;
     va_start(ap, fmt);
-    vfprintf(fp, fmt, ap);
+    vfprintf(g_log_file, fmt, ap);
     va_end(ap);
 
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
-    fprintf(fp, "\r\n\r\n");
+    fprintf(g_log_file, "\r\n\r\n");
 #else
-    fprintf(fp, "\n\n");
+    fprintf(g_log_file, "\n\n");
 #endif
 
-    if (0 != g_logFile[0])
-    {
-        fclose(fp);
-    }
-    
+    fflush(g_log_file);
+
     return 0;
 }
