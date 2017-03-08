@@ -23,6 +23,7 @@ static const int PATHLEN = 512;
 static char g_logDir[PATHLEN] = { 0 };
 static char g_fileNameKey[PATHLEN] = { 0 };
 static FILE* g_log_file = stderr;
+static int g_level = 0;
 
 
 //fileNameKey日志文件名称的关键字，不允许有-减号字符， 否则清理日志功能会出错
@@ -202,9 +203,21 @@ int clear_log(const unsigned int days)
 #endif
 }
 
+void set_log_level(int level)
+{
+    g_level = level;
+}
+
+int get_log_level()
+{
+    return g_level;
+}
+
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
 int _log1(const char* fileName, int line, const char* funcName, const char *fmt, ...)
 {
+    char buf[4096];
+    int offset = 0;
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     int i = GetLastError();
     time_t currTime;
@@ -214,7 +227,7 @@ int _log1(const char* fileName, int line, const char* funcName, const char *fmt,
     LPVOID lpMsgBuf;
     FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, i, 0, (LPSTR)&lpMsgBuf, 0, NULL);
-    fprintf(g_log_file, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS_ERRNO: %sUSER: ",
+    offset += sprintf(buf, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS: %s",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
         fileName, line, funcName, (char*)lpMsgBuf);
     LocalFree(lpMsgBuf);
@@ -226,22 +239,23 @@ int _log1(const char* fileName, int line, const char* funcName, const char *fmt,
     struct tm currTm;
     time(&currTime);
     localtime_r(&currTime, &currTm);
-    fprintf(g_log_file, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS_ERRNO: %s\nUSER: ",
+    offset += sprintf(buf, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS: %s\n",
         currTm.tm_year + 1900, currTm.tm_mon + 1, currTm.tm_mday, currTm.tm_hour, currTm.tm_min, currTm.tm_sec,
         fileName, line, funcName, p);
 #endif
 
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(g_log_file, fmt, ap);
+    offset += vsprintf(buf + offset, fmt, ap);
     va_end(ap);
 
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
-    fprintf(g_log_file, "\r\n\r\n");
+    offset += sprintf(buf + offset, "\r\n\r\n");
 #else
-    fprintf(g_log_file, "\n\n");
+    offset += sprintf(buf + offset, "\n\n");
 #endif
 
+    fwrite(buf, 1, offset, g_log_file);
     fflush(g_log_file);
 
     return 0;
