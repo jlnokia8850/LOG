@@ -1,7 +1,7 @@
 #include "log.h"
 #include <stdio.h>
 #pragma warning(disable: 4996)
-
+//https://github.com/lihaitao8233
 
 int main()
 {
@@ -14,15 +14,15 @@ int main()
     FILE* fp = fopen(file, "rb");
     if (NULL == fp)
     {
-        LOG_ERROR("fopen %s error", file);
+        LOGE("fopen %s error", file);
     }
     else
     {
-        LOG_NORMAL("fopen %s success", file);
+        LOGN("fopen %s success", file);
     }
 
-    LOG_DEBUG("after open %s", file);
-    LOG_NORMAL("before close_log_file");
+    LOGD("after open %s", file);
+    LOGN("before close_log_file");
 
 
     close_log_file();

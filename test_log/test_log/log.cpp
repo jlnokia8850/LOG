@@ -28,10 +28,11 @@ static FILE* g_log_file = stderr;
 static int g_level = 1;
 
 
+
 //windows各种预定义目录可以通过SHGetSpecialFolderPath获取
 ///char path[MAX_PATH + 1] = { 0 };
 ///SHGetSpecialFolderPathA(NULL, path, CSIDL_APPDATA, 0);
-int open_log_file(const char* dir, const char* file_name_key)
+int open_log_file(const char* dir, const char* file_name_key, const int days)
 {
     if (access(dir, 0) < 0)
     {
@@ -61,6 +62,8 @@ int open_log_file(const char* dir, const char* file_name_key)
     sprintf(log_file_name, "%s/%s-%04d-%02d-%02d-%02d-%02d-%02d.log", dir, file_name_key,
         curr_tm.tm_year + 1900, curr_tm.tm_mon + 1, curr_tm.tm_mday, curr_tm.tm_hour, curr_tm.tm_min, curr_tm.tm_sec);
 #endif
+    
+    if (-1 != days)  clear_log(days);
 
     g_log_file = fopen(log_file_name, "ab+");//输出位置
     if (NULL == g_log_file)
@@ -371,7 +374,7 @@ int CCustomTraverseDir::file_operation(const char* file)
 }
 #endif
 
-int clear_log(const unsigned int days)
+int clear_log(const int days)
 {
     CCustomTraverseDir traverse_dir(days);
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
@@ -398,10 +401,33 @@ int get_log_level()
 }
 
 //基础log函数  输出： [年-月-日-时-分-秒]文件-行号-函数名称:
-int _log1(const char* file_name, int line, const char* func_name, const char *fmt, ...)
+int _log1(int type, const char* file_name, int line, const char* func_name, const char *fmt, ...)
 {
+    if ((g_level & type) == 0)  return 0;
     char buf[4096];
-    int offset = 0;
+    switch (type)
+    {
+    case LOG_ERROR_LEVEL:
+    {
+        buf[0] = 'E';
+        break;
+    }
+    case LOG_NORMAL_LEVEL:
+    {
+        buf[0] = 'N';
+        break;
+    }
+    case LOG_DEBUG_LEVEL:
+    {
+        buf[0] = 'D';
+        break;
+    }
+    default:
+        break;
+    }
+
+    buf[1] = '-';
+    int offset = 2;
 #if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
     int i = GetLastError();
     time_t curr_time;
@@ -411,9 +437,9 @@ int _log1(const char* file_name, int line, const char* func_name, const char *fm
     LPVOID lpMsgBuf;
     FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, i, 0, (LPSTR)&lpMsgBuf, 0, NULL);
-    offset += sprintf(buf, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\r\nSYS: %s",
+    offset += sprintf(buf + offset, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s-%08x:\r\nSYS: %s",
         curr_tm.tm_year + 1900, curr_tm.tm_mon + 1, curr_tm.tm_mday, curr_tm.tm_hour, curr_tm.tm_min, curr_tm.tm_sec,
-        file_name, line, func_name, (char*)lpMsgBuf);
+        file_name, line, func_name, GetCurrentThreadId(), (char*)lpMsgBuf);
     LocalFree(lpMsgBuf);
     ///SetLastError(0);
 #else
@@ -423,9 +449,9 @@ int _log1(const char* file_name, int line, const char* func_name, const char *fm
     struct tm curr_tm;
     time(&curr_time);
     localtime_r(&curr_time, &curr_tm);
-    offset += sprintf(buf, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s:\nSYS: %s\n",
+    offset += sprintf(buf + offset, "[%04d-%02d-%02d-%02d-%02d-%02d]%s-%d-%s-%08x:\nSYS: %s\n",
         curr_tm.tm_year + 1900, curr_tm.tm_mon + 1, curr_tm.tm_mday, curr_tm.tm_hour, curr_tm.tm_min, curr_tm.tm_sec,
-        file_name, line, func_name, p);
+        file_name, line, func_name, (unsigned long)pthread_self(), p);
 #endif
 
     va_list ap;
