@@ -1,5 +1,6 @@
 #ifndef LOG_H_
 #define LOG_H_
+
 #define LOG_ERROR_LEVEL     1
 #define LOG_NORMAL_LEVEL    2
 #define LOG_DEBUG_LEVEL     4

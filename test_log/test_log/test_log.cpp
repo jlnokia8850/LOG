@@ -24,6 +24,8 @@ int main()
     LOGD("after open %s", file);
     LOGN("before close_log_file");
 
+    int* p = NULL;
+    *p = 0; //直接执行EXE才能产生dmp文件,保留pdb文件
 
     close_log_file();
     return 0;

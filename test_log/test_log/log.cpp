@@ -11,6 +11,8 @@ using namespace std;
 #include <io.h>
 #include <direct.h>
 #include <windows.h>
+#include <dbghelp.h> 
+#pragma comment(lib,  "dbghelp.lib")
 #else
 #include <unistd.h>
 #include <sys/stat.h>
@@ -27,7 +29,67 @@ static char g_file_name_key[PATHLEN] = { 0 };
 static FILE* g_log_file = stderr;
 static int g_level = 1;
 
+#if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
+//直接执行EXE才能产生dmp文件,保留pdb文件
+LONG WINAPI MyUnhandledExceptionFilter(struct _EXCEPTION_POINTERS* lpExceptionInfo)
+{
+    char file_name[MAX_PATH];
+    time_t curr_time;
+    struct tm curr_tm;
+    time(&curr_time);
+    localtime_s(&curr_tm, &curr_time);
+    sprintf(file_name, "%s\\%s-%04d-%02d-%02d-%02d-%02d-%02d.dmp", g_log_dir, g_file_name_key,
+        curr_tm.tm_year + 1900, curr_tm.tm_mon + 1, curr_tm.tm_mday, curr_tm.tm_hour, curr_tm.tm_min, curr_tm.tm_sec);
 
+    HANDLE hFile = ::CreateFileA(file_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (INVALID_HANDLE_VALUE != hFile)
+    {
+        MINIDUMP_EXCEPTION_INFORMATION ExInfo;
+        ExInfo.ThreadId = ::GetCurrentThreadId();
+        ExInfo.ExceptionPointers = lpExceptionInfo;
+        ExInfo.ClientPointers = false;
+
+        BOOL bOK = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile, MiniDumpNormal, &ExInfo, NULL, NULL);
+        if (bOK)  LOGN("MiniDumpWriteDump %s ok", file_name);
+        else  LOGE("MiniDumpWriteDump fail");
+        ::CloseHandle(hFile);
+    }
+    else
+    {
+        LOGE("CreateFile %s fail", file_name);
+    }
+
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#else
+/*
+ulimit -c命令查看core文件开关。为0，表示关闭了此功能，不会生成core文件
+ulimit -c filesize，限制core文件的大小（filesize的单位为kbyte）。若ulimit -c unlimited，表示core文件的大小不受限制。
+如果生成的信息超过此大小，生成一个不完整的core文件。调试此core文件的时候，gdb会提示错误。
+ulimit在脚本里面执行无效（可以source *.sh），执行程序前shell中执行ulimit -c unlimited
+
+core默认路径为可执行文件运行的同一路径下。
+若系统生成的core文件不带其他任何扩展名称，则全部命名为core。新的core文件生成将覆盖原来的core文件。
+/proc/sys/kernel/core_uses_pid可以控制core文件的文件名中是否添加pid作为扩展。文件内容为1，表示添加pid作为扩展名，生成的core文件格式为core.xxxx；
+为0则表示生成的core文件同一命名为core。
+
+proc/sys/kernel/core_pattern可以控制core文件保存位置和文件名格式。
+可通过以下命令修改此文件：
+echo "/corefile/core-%e-%p-%t" > core_pattern，可以将core文件统一生成到/corefile目录下，产生的文件名为core-命令名-pid-时间戳
+以下是参数列表:
+%p - insert pid into filename 添加pid
+%u - insert current uid into filename 添加当前uid
+%g - insert current gid into filename 添加当前gid
+%s - insert signal that caused the coredump into the filename 添加导致产生core的信号
+%t - insert UNIX time that the coredump occurred into filename 添加core文件生成时的unix时间
+%h - insert hostname where the coredump happened into filename 添加主机名
+%e - insert coredumping executable name into filename 添加命令名
+
+gdb -core=core.xxxx
+file ./a.out
+bt
+*/
+#endif
 
 //windows各种预定义目录可以通过SHGetSpecialFolderPath获取
 ///char path[MAX_PATH + 1] = { 0 };
@@ -70,6 +132,12 @@ int open_log_file(const char* dir, const char* file_name_key, const int days)
     {
         return -2;
     }
+
+#if defined(WIN32) || defined(WIN64) || defined(_WIN32_WCE)
+    SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
+#else
+
+#endif
 
     return 0;
 }
